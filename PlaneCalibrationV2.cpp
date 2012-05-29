@@ -49,10 +49,10 @@ void writeMatrixValues(const Mat& m)
 	}
 }
 
-void PlaneCalibrationV2::retrievePlaneCorrespondences(KinectSensor& kinect1, KinectSensor& kinect2, list<Plane>& planes1, list<Plane>& planes2)
+void PlaneCalibrationV2::retrievePlaneCorrespondences(KinectSensor& kinect, KinectSensor& kinectRef, Plane* planes, Plane* planesRef)
 {
-	Matx33f rotation;
-	Matx31f translation;
+	Matx33d rotation;
+	Matx31d translation;
 
 	// Control variables
 	bool bContinueLoop = true;
@@ -79,37 +79,31 @@ void PlaneCalibrationV2::retrievePlaneCorrespondences(KinectSensor& kinect1, Kin
 
 	cvNamedWindow("Image Frame 1", 1);
 	cvNamedWindow("Image Frame 2", 1);
-	cvNamedWindow("Rotation", 1);
 	
-
 	int numPlanes = 0;
-	kinect1.startDevice();
-	kinect2.startDevice();
+	kinect.startDevice();
+	kinectRef.startDevice();
 
-	Plane plane1, plane2;
+	Mat WeighImg1;
+	Mat WeighImg2;
 
-	vector<Matx31f> normals1, normals2;
-	Matx31f sumNorm1, sumNorm2;
-	Matx31f nCentroid1, nCentroid2;
-	double degrees = 360.0;
-	int cont = 0;
-	
+	double finalError = -1;
+	double rotError = -1;
+	Plane plane, planeRef;
 	//Start and wait cameras
-	while((degrees > 0.3 || numPlanes < 50) && numPlanes < 250 && bContinueLoop)
-	{		
-		Mat WeighImg1(XN_VGA_Y_RES, XN_VGA_X_RES,CV_32FC1);
-		Mat WeighImg2(XN_VGA_Y_RES, XN_VGA_X_RES,CV_32FC1);
+	while(bContinueLoop && numPlanes < MAX_PLANES && (numPlanes < 50 || abs(finalError-GROUNDTRUTH) > MAXIMUM_ERROR))
+	{
+		WeighImg1 = Mat::zeros(XN_VGA_Y_RES, XN_VGA_X_RES,CV_32FC1);
+		WeighImg2 = Mat::zeros(XN_VGA_Y_RES, XN_VGA_X_RES,CV_32FC1);
 
-//		Mat results(200,400, CV_8UC3); //shows the rotation error
-
-		kinect1.waitAndUpdate();
-		kinect2.waitAndUpdate();
+		kinect.waitAndUpdate();
+		kinectRef.waitAndUpdate();
 
 		//retrieve data
-		const XnDepthPixel* depthMap1 = kinect1.getDepthMap();
-		const XnDepthPixel* depthMap2 = kinect2.getDepthMap();
-		const XnRGB24Pixel* rgbMap1 = kinect1.getRGBMap();
-		const XnRGB24Pixel* rgbMap2 = kinect2.getRGBMap();
+		const XnDepthPixel* depthMap1 = kinect.getDepthMap();
+		const XnDepthPixel* depthMap2 = kinectRef.getDepthMap();
+		const XnRGB24Pixel* rgbMap1 = kinect.getRGBMap();
+		const XnRGB24Pixel* rgbMap2 = kinectRef.getRGBMap();
 
 		// Copy RGB Generator data into Mat Frame (For display only)
 		ConvertXnRGB24PixelToFrame(rgbMap1,Frame1);
@@ -120,10 +114,10 @@ void PlaneCalibrationV2::retrievePlaneCorrespondences(KinectSensor& kinect1, Kin
 			// Build model
 			if( trackingMode==BUILD_MODEL )
 			{
-				err1 = plane1.frontoPlaneFit( depthMap1, &kinect1, selectWindow, minDepth,maxDepth );
-				err2 = plane2.frontoPlaneFit( depthMap2, &kinect2, selectWindow, minDepth,maxDepth );
+				err1 = plane.frontoPlaneFit( depthMap1, &kinect, selectWindow, minDepth,maxDepth );
+				err2 = planeRef.frontoPlaneFit( depthMap2, &kinectRef, selectWindow, minDepth,maxDepth );
 
-				if((err1!=0)||(plane1.getFitWindow().area()<=1) ||(err2!=0)||(plane2.getFitWindow().area()<=1))
+				if((err1!=0)||(plane.getFitWindow().area()<=1)||(err2!=0)||(planeRef.getFitWindow().area()<=1))
 				{
 					trackingMode=NO_TRACKING;
 					cout << "No initial plane found";
@@ -134,51 +128,64 @@ void PlaneCalibrationV2::retrievePlaneCorrespondences(KinectSensor& kinect1, Kin
 				}
 				else trackingMode=TRACK_MODEL;
 			}
-
 			// Track Model
 			else
 			{
-				err1 = plane1.updatePlaneFit( depthMap1, &kinect1, WeighImg1, rgbMap1);
-				err2 = plane2.updatePlaneFit( depthMap2, &kinect2, WeighImg2, rgbMap2);
+				err1 = plane.updatePlaneFit( depthMap1, &kinect, WeighImg1, rgbMap1);
+				err2 = planeRef.updatePlaneFit( depthMap2, &kinectRef, WeighImg2, rgbMap2);
+//Debug
+rectangle(Frame1, Point(plane.getFitWindow().x, plane.getFitWindow().y), Point(plane.getFitWindow().x+plane.getFitWindow().width, plane.getFitWindow().y+plane.getFitWindow().height),Scalar(255,255,255), 1,1,0);			
+rectangle(Frame2, Point(planeRef.getFitWindow().x, planeRef.getFitWindow().y), Point(planeRef.getFitWindow().x+planeRef.getFitWindow().width, planeRef.getFitWindow().y+planeRef.getFitWindow().height),Scalar(255,255,255), 1,1,0);			
+rectangle(WeighImg1, Point(plane.getFitWindow().x, plane.getFitWindow().y), Point(plane.getFitWindow().x+plane.getFitWindow().width, plane.getFitWindow().y+plane.getFitWindow().height),Scalar(255,255,255), 1,1,0);			
+rectangle(WeighImg2, Point(planeRef.getFitWindow().x, planeRef.getFitWindow().y), Point(planeRef.getFitWindow().x+planeRef.getFitWindow().width, planeRef.getFitWindow().y+planeRef.getFitWindow().height),Scalar(255,255,255), 1,1,0);			
 
-rectangle(Frame1, Point(plane1.getFitWindow().x, plane1.getFitWindow().y), Point(plane1.getFitWindow().x+plane1.getFitWindow().width, plane1.getFitWindow().y+plane1.getFitWindow().height),Scalar(255,255,255), 1,1,0);			
-rectangle(Frame2, Point(plane2.getFitWindow().x, plane2.getFitWindow().y), Point(plane2.getFitWindow().x+plane2.getFitWindow().width, plane2.getFitWindow().y+plane2.getFitWindow().height),Scalar(255,255,255), 1,1,0);			
-rectangle(WeighImg1, Point(plane1.getFitWindow().x, plane1.getFitWindow().y), Point(plane1.getFitWindow().x+plane1.getFitWindow().width, plane1.getFitWindow().y+plane1.getFitWindow().height),Scalar(255,255,255), 1,1,0);			
-rectangle(WeighImg2, Point(plane2.getFitWindow().x, plane2.getFitWindow().y), Point(plane2.getFitWindow().x+plane2.getFitWindow().width, plane2.getFitWindow().y+plane2.getFitWindow().height),Scalar(255,255,255), 1,1,0);			
-
-				if((err1!=0)||(plane1.getFitWindow().area()<=1) ||(err2!=0)||(plane2.getFitWindow().area()<=1))
+				if((err1!=0)||(plane.getFitWindow().area()<=1)||(err2!=0)||(planeRef.getFitWindow().area()<=1))
 				{
-					cout << " Error=" << err1 << ", Area=" << plane1.getFitWindow().area() << ", ";
-					cout << "[" << plane1.getFitWindow().width << "X" << plane1.getFitWindow().height << "] at (" << plane1.getFitWindow().x << "X" << plane1.getFitWindow().y << ") ";
+					cout << " Error=" << err1 << ", Area=" << plane.getFitWindow().area() << ", ";
+					cout << "[" << plane.getFitWindow().width << "X" << plane.getFitWindow().height << "] at (" << plane.getFitWindow().x << "X" << plane.getFitWindow().y << ") ";
 					trackingMode=NO_TRACKING;
-					plane1.setResidualVariance(900);
-					plane2.setResidualVariance(900);
+					plane.setResidualVariance(900);
+					planeRef.setResidualVariance(900);
 					cout << "Tracked plane lost\n";
+					numPlanes -= 4;
 				}
-				else
-					cout << " StdDev=" << sqrt(plane1.getResidualVariance());
+//				else
+//					cout << " StdDev=" << sqrt(plane.getResidualVariance());
 			}
 
 			// Image DISPLAY
-			rectangle(Frame1, origin, corner, Scalar(255,0,0), 1,1,0);
-			Point centroid1 = kinect1.pointProject(*plane1.getCentroid());
-			Point normal1   = kinect1.pointProject(*plane1.getCentroid() + 300*(*plane1.getNormal()));
+//			rectangle(Frame1, origin, corner, Scalar(255,0,0), 1,1,0);
+			Point centroid1 = kinect.pointProject(*plane.getCentroid());
+			Point normal1   = kinect.pointProject(*plane.getCentroid() + 300*(*plane.getNormal()));
 			line(Frame1, centroid1, normal1, Scalar(0,0,255), 2, 3, 0);
 
-			rectangle(Frame2, origin, corner, Scalar(255,0,0), 1,1,0);
-			Point centroid2 = kinect2.pointProject(*plane2.getCentroid());
-			Point normal2   = kinect2.pointProject(*plane2.getCentroid() + 300*(*plane2.getNormal()));
+//			rectangle(Frame2, origin, corner, Scalar(255,0,0), 1,1,0);
+			Point centroid2 = kinectRef.pointProject(*planeRef.getCentroid());
+			Point normal2   = kinectRef.pointProject(*planeRef.getCentroid() + 300*(*planeRef.getNormal()));
 			line(Frame2, centroid2, normal2, Scalar(0,0,255), 2, 3, 0);
 		}
 
 		if (trackingMode != NO_TRACKING)
 		{
-				planes1.push_back(plane1);
-				planes2.push_back(plane2);
-				const Matx31f n1 = *(plane1.getNormal());
-				const Matx31f n2 = *(plane2.getNormal());
-				normals1.push_back(n1);
-				normals2.push_back(n2);
+			//cout << "Norm Ref (" << numPlanes << "): " << planeRef.getNormal()->val[0] << ", " << planeRef.getNormal()->val[1] << ", " << planeRef.getNormal()->val[2] << endl;
+			//cout << "Norm (" << numPlanes << "): " << plane.getNormal()->val[0] << ", " << plane.getNormal()->val[1] << ", " << plane.getNormal()->val[2] << endl;
+
+			planes[numPlanes] = plane;
+			planesRef[numPlanes++] = planeRef;
+
+			if (numPlanes > MIN_PLANES)
+			{
+				rotError = calculateRotation(planes, planesRef, rotation, numPlanes);
+				finalError = calculateTranslation(planes, planesRef, &rotation, translation, numPlanes);
+				cout << "Total Error: " << abs(finalError-GROUNDTRUTH) << endl;
+			}
+
+//				planes1.push_back(plane1);
+//				planes2.push_back(plane2);
+//				const Matx31f n1 = *(plane1.getNormal());
+//				const Matx31f n2 = *(plane2.getNormal());
+//				normals1.push_back(n1);
+//				normals2.push_back(n2);
 
 				//save normals
 //				savePlaneData(kinect1.getIdCam(), n1, numPlanes, "D:\\CameraCalibrations\\dataCalib\\normals\\cam", "normal");
@@ -187,83 +194,93 @@ rectangle(WeighImg2, Point(plane2.getFitWindow().x, plane2.getFitWindow().y), Po
 //				savePlaneData(kinect1.getIdCam(), *(plane1.getParameters()), numPlanes, "D:\\CameraCalibrations\\dataCalib\\parameters\\cam", "parameter");
 //				savePlaneData(kinect2.getIdCam(), *(plane2.getParameters()), numPlanes, "D:\\CameraCalibrations\\dataCalib\\parameters\\cam", "parameter");
 
-				numPlanes++;
-				sumNorm1 += n1;
-				sumNorm2 += n2;
-				Mat m1 = Mat(sumNorm1)/numPlanes;
-				Mat m2 = Mat(sumNorm2)/numPlanes;
-				nCentroid1 = m1;
-				nCentroid2 = m2;
+//				numPlanes++;
+//				sumNorm1 += n1;
+//				sumNorm2 += n2;
+//				Mat m1 = Mat(sumNorm1)/numPlanes;
+//				Mat m2 = Mat(sumNorm2)/numPlanes;
+//				nCentroid1 = m1;
+//				nCentroid2 = m2;
 				//calculate the rotation and evaluate the error
-				if (numPlanes > 6)
-				{
-					Matx31f nCRot;
-					if (kinect1.getIdCam() == kinect1.getIdRefCam()) //N2*R = N1. Kinect1 is the reference
-					{
-						degrees = calculateRotation(normals2, normals1, nCentroid2, nCentroid1, numPlanes, &rotation);
+//				if (numPlanes > 6)
+//				{
+//					Matx31f nCRot;
+//					if (kinect1.getIdCam() == kinect1.getIdRefCam()) //N2*R = N1. Kinect1 is the reference
+//					{
+//						degrees = calculateRotation(normals2, normals1, nCentroid2, nCentroid1, numPlanes, &rotation);
 //						char *txtRef = "Normal camera 1";
 //						char *txtNoRef = "Normal camera 2(R)";
 //						char * txtAngle = "Angle (n2(R)*n1'): ";
 //						updateResultImage(results,degrees, nCRot, nCentroid1, kinect1, txtRef, txtNoRef, txtAngle);
-					}
-					else //N1*R = N2. Kinect2 is the reference
-					{
-						degrees = calculateRotation(normals1, normals2, nCentroid1, nCentroid2, numPlanes, &rotation);
+//					}
+//					else //N1*R = N2. Kinect2 is the reference
+//					{
+//						degrees = calculateRotation(normals1, normals2, nCentroid1, nCentroid2, numPlanes, &rotation);
 //						char *txtRef = "Normal camera 2";
 //						char *txtNoRef = "Normal camera 1(R)";
 //						char * txtAngle = "Angle (n1(R)*n2'): ";
 //						updateResultImage(results,degrees, nCRot, nCentroid2, kinect2, txtRef, txtNoRef, txtAngle);
-					}	
+//					}	
 
-					outDebug << "Degrees rotated: " << degrees << endl;
-				}			
+//					outDebug << "Degrees rotated: " << degrees << endl;
+//				}			
 		}
 			// Display
-			rectangle( Frame1, origin, corner, Scalar(255,0,0), 1,1,0);
-			rectangle( Frame2, origin, corner, Scalar(255,0,0), 1,1,0);
-			imshow("Image Frame 1", Frame1);
-			imshow("Image Frame 2", Frame2);
-//			imshow("Rotation", results);
-			imshow("Weigh Frame1", WeighImg1);
-			imshow("Weigh Frame2", WeighImg2);
-			// Control
-			int	keyValue = cvWaitKey(1);
-			if (keyValue==27) bContinueLoop = false;
-			if (keyValue==13) trackingMode = BUILD_MODEL;
-
-			cout << "\r";
-			cont++;
+		rectangle(Frame1, origin, corner, Scalar(255,0,0), 1,1,0);
+		rectangle(Frame2, origin, corner, Scalar(255,0,0), 1,1,0);
+		imshow("Image Frame 1", Frame1);
+		imshow("Image Frame 2", Frame2);
+		imshow("Weigh Frame1", WeighImg1);
+		imshow("Weigh Frame2", WeighImg2);
+		// Control
+		int	keyValue = cvWaitKey(1);
+		if (keyValue==27) bContinueLoop = false;
+		if (keyValue==13) trackingMode = BUILD_MODEL;
 	}
 
-	kinect1.stopDevice();
-	kinect2.stopDevice();
+	kinect.stopDevice();
+	kinectRef.stopDevice();
 
-	if (kinect1.getIdCam() == kinect1.getIdRefCam())
-	{
-		//from 2 to 1
-		translation = calculateTranslation(planes1, planes2, rotation);
-		kinect2.setExtrinsics(rotation, translation);
-		saveExtrinsics(kinect2.getIdCam(), kinect2.getIdRefCam(), rotation, translation);
-		//calcualte the inverse (from 1 to 2)
-		Matx31f trans_inv;
-		Matx33f rot_inv;
-		calcualterExtrinsicInverse(rotation, translation, &rot_inv, &trans_inv);
-		kinect1.setExtrinsics(rot_inv, trans_inv);
-		saveExtrinsics(kinect2.getIdRefCam(), kinect2.getIdCam(), rot_inv, trans_inv);		
-	}
-	else
-	{
-		//from 1 to 2
-		translation = calculateTranslation(planes2, planes1, rotation);
-		kinect1.setExtrinsics(rotation, translation);
-		saveExtrinsics(kinect1.getIdCam(), kinect1.getIdRefCam(), rotation, translation);
-		//from 2 to 1
-		Matx31f trans_inv;
-		Matx33f rot_inv;
-		calcualterExtrinsicInverse(rotation, translation, &rot_inv, &trans_inv);
-		kinect2.setExtrinsics(rot_inv, trans_inv);
-		saveExtrinsics(kinect1.getIdRefCam(), kinect1.getIdCam(), rot_inv, trans_inv);
-	}
+	cout << "Translation: " << translation(0) << ", " << translation(1) << ", " << translation(2) << endl;
+	cout << "Rotation Error: " << rotError << endl;
+	cout << "Number of Planes: " << numPlanes << endl;
+
+	//Save in disk extrinsics from NoRef to Ref
+	saveExtrinsics(kinect.getIdCam(), kinect.getIdRefCam(), rotation, translation);
+
+	Matx31f trans_inv;
+	Matx33f rot_inv;
+	calcualterExtrinsicInverse(rotation, translation, &rot_inv, &trans_inv);
+	//Save in disk extrinsics from Ref to NoRef
+	saveExtrinsics(kinectRef.getIdRefCam(), kinectRef.getIdCam(), rot_inv, trans_inv);	
+
+
+	//if (kinect1.getIdCam() == kinect1.getIdRefCam())
+	//{
+	//	//from 2 to 1
+	//	translation = calculateTranslation(planes1, planes2, rotation);
+	//	kinect2.setExtrinsics(rotation, translation);
+	//	saveExtrinsics(kinect2.getIdCam(), kinect2.getIdRefCam(), rotation, translation);
+	//	//calcualte the inverse (from 1 to 2)
+	//	Matx31f trans_inv;
+	//	Matx33f rot_inv;
+	//	calcualterExtrinsicInverse(rotation, translation, &rot_inv, &trans_inv);
+	//	kinect1.setExtrinsics(rot_inv, trans_inv);
+	//	saveExtrinsics(kinect2.getIdRefCam(), kinect2.getIdCam(), rot_inv, trans_inv);		
+	//}
+	//else
+	//{
+	//	//from 1 to 2
+	//	translation = calculateTranslation(planes2, planes1, rotation);
+	//	kinect1.setExtrinsics(rotation, translation);
+	//	saveExtrinsics(kinect1.getIdCam(), kinect1.getIdRefCam(), rotation, translation);
+	//	//from 2 to 1
+	//	Matx31f trans_inv;
+	//	Matx33f rot_inv;
+	//	calcualterExtrinsicInverse(rotation, translation, &rot_inv, &trans_inv);
+	//	kinect2.setExtrinsics(rot_inv, trans_inv);
+	//	saveExtrinsics(kinect1.getIdRefCam(), kinect1.getIdCam(), rot_inv, trans_inv);
+	//}
 
 }
 
@@ -333,6 +350,38 @@ void PlaneCalibrationV2::calcualterExtrinsicInverse(const Matx33f& rotation, con
 	*trans_inv = (*rot_inv)*translation;
 	for (int i = 0; i < 3; i++)
 		(*trans_inv)(i) = -(*trans_inv)(i);
+}
+
+double PlaneCalibrationV2::calculateRotation(const Plane* planes, const Plane* planesRef, Matx33d& rotation, const int numPlanes)
+{
+	// d x n matrices
+	Mat X (3, numPlanes, CV_64F); // No Ref.
+	Mat Y (3, numPlanes, CV_64F); // Reference.
+
+	/*calculate the shifted normals and fill X and Y with the normals shifted as columns*/
+	for (int i = 0; i < numPlanes; i++)
+	{
+		Mat(*(planes[i].getNormal())).copyTo(X.col(i));
+		Mat(*(planesRef[i].getNormal())).copyTo(Y.col(i));
+	}
+
+	//calculate S and SVD(S)
+	SVD svd(X*Y.t());
+	Mat rot = svd.vt.t()*svd.u.t();
+	double det = determinant(rot);
+	if (det != 1)
+	{
+		Mat i = Mat::eye(3, 3, CV_64F);
+		i.at<double>(2, 2) = det;
+		rot = svd.vt.t()*i*svd.u.t();
+	}
+	rotation = rot;
+	double sumRads = 0.0;
+	//Evaluate the rotation error;
+	for (int i = 0; i < numPlanes; i++)
+		sumRads += acos((rot*X.col(i)).dot(Y.col(i)));
+	
+	return (sumRads/double(numPlanes))*180.0/CV_PI;
 }
 
 double PlaneCalibrationV2::calculateRotation(const vector<Matx31f>& normalsNoRef, const vector<Matx31f>& normalsRef, const Matx31f& nCentrNoRef, const Matx31f& nCentrRef, int nPlanes, Matx33f* rotation)
@@ -425,6 +474,68 @@ void PlaneCalibrationV2::updateResultImage(Mat results, double degrees, const  M
 
 }
 
+double PlaneCalibrationV2::calculateTranslation(const Plane* planes, const Plane* planesRef, const Matx33d* rotation, Matx31d& translation, const int numPlanes)
+{
+	//Create a syste N*t=D
+	//N is a nxd matrix with the normals of planesRef as its rows.
+	//D is a dx1 matrix. Every row is equal to distanceRef - distance*(normalRef_i*normal_i)
+
+	Mat N (numPlanes, 3, CV_64F);
+	Mat N_Pseudo(3, numPlanes, CV_64F);
+	Mat D (numPlanes, 1, CV_64F);
+	for (int i = 0; i < numPlanes; i++)
+	{
+		Mat(planesRef[i].getNormal()->t()).copyTo(N.row(i));
+		double dotNormals = planesRef[i].getNormal()->dot(*rotation * *(planes[i].getNormal()));
+		double d = planesRef[i].getDistance() - planes[i].getDistance()*dotNormals;
+		D.at<double>(i) = d;
+	}
+
+	//Debug
+	//for (int i = 0; i < numPlanes; i++)
+	//{
+	//	double dotNormals = planesRef[i].getNormal()->dot(*(planes[i].getNormal()));
+	//	cout << "Dot Normals(" << i << "):" << dotNormals << endl;
+	//	cout << "Ref Dis: (" << i << "): " << planesRef[i].getDistance() << endl;
+	//	cout << "NoRef Dis: (" << i << "): " << planes[i].getDistance() << endl;
+	//	double d = planesRef[i].getDistance() - planes[i].getDistance()*dotNormals;
+	//	cout << "d (" << i << "): " << d << " D: " << D.at<double>(i) << endl;
+
+	//}
+
+	//cout << "N" << endl;
+	//for (int i = 0; i < N.rows; i++)
+	//{
+	//	double* ptr = N.ptr<double>(i);
+	//	for (int j = 0; j < N.cols; j++)
+	//	{
+	//		cout << ptr[j] << " ";
+	//	}
+	//	cout << endl;
+	//}
+
+	//Asume is not square and invertible
+	N_Pseudo = N.inv(DECOMP_SVD); 
+
+	//cout << "N_Pseudo" << endl;
+	//for (int i = 0; i < N_Pseudo.rows; i++)
+	//{
+	//	double* ptr = N_Pseudo.ptr<double>(i);
+	//	for (int j = 0; j < N_Pseudo.cols; j++)
+	//	{
+	//		cout << ptr[j] << " ";
+	//	}
+	//	cout << endl;
+	//}
+
+
+	Mat t = N_Pseudo*D;
+	translation = t;
+	//Check Translation accuracy
+	return checkTranslation(planes, planesRef, rotation, &translation, numPlanes);
+
+
+}
 Matx31f PlaneCalibrationV2::calculateTranslation(const list<Plane>& planes_Ref, const list<Plane>& planes_NoRef, const Matx33f rotation)
 {
 	Matx31f translation;
@@ -483,6 +594,26 @@ Matx31f PlaneCalibrationV2::calculateTranslation(const list<Plane>& planes_Ref, 
 
 
 	return translation;
+}
+
+//TODO Check with Graeme
+double PlaneCalibrationV2::checkTranslation(const Plane* planes, const Plane* planesRef, const Matx33d* rotation, const Matx31d* translation, const int numPlanes)
+{
+	/*rotate and translate the centroids of planes and calculate the distance with the corresponding centroids in planesRef*/
+	double d, dd;
+	d = 0.0; dd = 0.0;
+	for (int i = 0; i < numPlanes; i++)
+	{
+		Matx31d centrTrans =  *rotation * *(planes[i].getCentroid()) + *translation;
+		double sum = powf(planesRef->getCentroid()->val[0] - centrTrans(0), 2) + powf(planesRef->getCentroid()->val[1] - centrTrans(1), 2) + powf(planesRef->getCentroid()->val[2] - centrTrans(2), 2);
+		double dist = sqrtf(sum);
+		dd += dist*dist;
+		d += dist;
+	}
+	double mean = d/numPlanes;
+	double sigma = powf( dd/numPlanes - powf(mean,2), 0.5);
+//	cout << "Sigma Distance: " << sigma << endl;
+	return mean;
 }
 
 double PlaneCalibrationV2::checkTranslation(const list<Plane>& planes_Ref, const list<Plane>& planes_NoRef, const Matx33f rotation, const Matx31f translation)
