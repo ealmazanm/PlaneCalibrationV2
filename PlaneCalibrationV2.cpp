@@ -154,12 +154,10 @@ rectangle(WeighImg2, Point(planeRef.getFitWindow().x, planeRef.getFitWindow().y)
 			}
 
 			// Image DISPLAY
-//			rectangle(Frame1, origin, corner, Scalar(255,0,0), 1,1,0);
 			Point centroid1 = kinect.pointProject(*plane.getCentroid());
 			Point normal1   = kinect.pointProject(*plane.getCentroid() + 300*(*plane.getNormal()));
 			line(Frame1, centroid1, normal1, Scalar(0,0,255), 2, 3, 0);
 
-//			rectangle(Frame2, origin, corner, Scalar(255,0,0), 1,1,0);
 			Point centroid2 = kinectRef.pointProject(*planeRef.getCentroid());
 			Point normal2   = kinectRef.pointProject(*planeRef.getCentroid() + 300*(*planeRef.getNormal()));
 			line(Frame2, centroid2, normal2, Scalar(0,0,255), 2, 3, 0);
@@ -167,63 +165,16 @@ rectangle(WeighImg2, Point(planeRef.getFitWindow().x, planeRef.getFitWindow().y)
 
 		if (trackingMode != NO_TRACKING)
 		{
-			//cout << "Norm Ref (" << numPlanes << "): " << planeRef.getNormal()->val[0] << ", " << planeRef.getNormal()->val[1] << ", " << planeRef.getNormal()->val[2] << endl;
-			//cout << "Norm (" << numPlanes << "): " << plane.getNormal()->val[0] << ", " << plane.getNormal()->val[1] << ", " << plane.getNormal()->val[2] << endl;
-
 			planes[numPlanes] = plane;
 			planesRef[numPlanes++] = planeRef;
 
-			if (numPlanes > MIN_PLANES)
+			if (numPlanes >= MIN_PLANES)
 			{
 				rotError = calculateRotation(planes, planesRef, rotation, numPlanes);
 				finalError = calculateTranslation(planes, planesRef, &rotation, translation, numPlanes);
 				cout << "Total Error: " << abs(finalError-GROUNDTRUTH) << endl;
 			}
 
-//				planes1.push_back(plane1);
-//				planes2.push_back(plane2);
-//				const Matx31f n1 = *(plane1.getNormal());
-//				const Matx31f n2 = *(plane2.getNormal());
-//				normals1.push_back(n1);
-//				normals2.push_back(n2);
-
-				//save normals
-//				savePlaneData(kinect1.getIdCam(), n1, numPlanes, "D:\\CameraCalibrations\\dataCalib\\normals\\cam", "normal");
-//				savePlaneData(kinect2.getIdCam(), n2, numPlanes, "D:\\CameraCalibrations\\dataCalib\\normals\\cam", "normal");
-				//save parameters
-//				savePlaneData(kinect1.getIdCam(), *(plane1.getParameters()), numPlanes, "D:\\CameraCalibrations\\dataCalib\\parameters\\cam", "parameter");
-//				savePlaneData(kinect2.getIdCam(), *(plane2.getParameters()), numPlanes, "D:\\CameraCalibrations\\dataCalib\\parameters\\cam", "parameter");
-
-//				numPlanes++;
-//				sumNorm1 += n1;
-//				sumNorm2 += n2;
-//				Mat m1 = Mat(sumNorm1)/numPlanes;
-//				Mat m2 = Mat(sumNorm2)/numPlanes;
-//				nCentroid1 = m1;
-//				nCentroid2 = m2;
-				//calculate the rotation and evaluate the error
-//				if (numPlanes > 6)
-//				{
-//					Matx31f nCRot;
-//					if (kinect1.getIdCam() == kinect1.getIdRefCam()) //N2*R = N1. Kinect1 is the reference
-//					{
-//						degrees = calculateRotation(normals2, normals1, nCentroid2, nCentroid1, numPlanes, &rotation);
-//						char *txtRef = "Normal camera 1";
-//						char *txtNoRef = "Normal camera 2(R)";
-//						char * txtAngle = "Angle (n2(R)*n1'): ";
-//						updateResultImage(results,degrees, nCRot, nCentroid1, kinect1, txtRef, txtNoRef, txtAngle);
-//					}
-//					else //N1*R = N2. Kinect2 is the reference
-//					{
-//						degrees = calculateRotation(normals1, normals2, nCentroid1, nCentroid2, numPlanes, &rotation);
-//						char *txtRef = "Normal camera 2";
-//						char *txtNoRef = "Normal camera 1(R)";
-//						char * txtAngle = "Angle (n1(R)*n2'): ";
-//						updateResultImage(results,degrees, nCRot, nCentroid2, kinect2, txtRef, txtNoRef, txtAngle);
-//					}	
-
-//					outDebug << "Degrees rotated: " << degrees << endl;
-//				}			
 		}
 			// Display
 		rectangle(Frame1, origin, corner, Scalar(255,0,0), 1,1,0);
@@ -255,32 +206,6 @@ rectangle(WeighImg2, Point(planeRef.getFitWindow().x, planeRef.getFitWindow().y)
 	saveExtrinsics(kinectRef.getIdRefCam(), kinectRef.getIdCam(), rot_inv, trans_inv);	
 
 
-	//if (kinect1.getIdCam() == kinect1.getIdRefCam())
-	//{
-	//	//from 2 to 1
-	//	translation = calculateTranslation(planes1, planes2, rotation);
-	//	kinect2.setExtrinsics(rotation, translation);
-	//	saveExtrinsics(kinect2.getIdCam(), kinect2.getIdRefCam(), rotation, translation);
-	//	//calcualte the inverse (from 1 to 2)
-	//	Matx31f trans_inv;
-	//	Matx33f rot_inv;
-	//	calcualterExtrinsicInverse(rotation, translation, &rot_inv, &trans_inv);
-	//	kinect1.setExtrinsics(rot_inv, trans_inv);
-	//	saveExtrinsics(kinect2.getIdRefCam(), kinect2.getIdCam(), rot_inv, trans_inv);		
-	//}
-	//else
-	//{
-	//	//from 1 to 2
-	//	translation = calculateTranslation(planes2, planes1, rotation);
-	//	kinect1.setExtrinsics(rotation, translation);
-	//	saveExtrinsics(kinect1.getIdCam(), kinect1.getIdRefCam(), rotation, translation);
-	//	//from 2 to 1
-	//	Matx31f trans_inv;
-	//	Matx33f rot_inv;
-	//	calcualterExtrinsicInverse(rotation, translation, &rot_inv, &trans_inv);
-	//	kinect2.setExtrinsics(rot_inv, trans_inv);
-	//	saveExtrinsics(kinect1.getIdRefCam(), kinect1.getIdCam(), rot_inv, trans_inv);
-	//}
 
 }
 
@@ -480,62 +405,36 @@ double PlaneCalibrationV2::calculateTranslation(const Plane* planes, const Plane
 	//N is a nxd matrix with the normals of planesRef as its rows.
 	//D is a dx1 matrix. Every row is equal to distanceRef - distance*(normalRef_i*normal_i)
 
-	Mat N (numPlanes, 3, CV_64F);
-	Mat N_Pseudo(3, numPlanes, CV_64F);
-	Mat D (numPlanes, 1, CV_64F);
+	double sumXX, sumXY, sumXZ, sumYY, sumYZ, sumZZ;
+	double ndX, ndY, ndZ;
+	sumXX = sumXY = sumXZ = sumYY = sumYZ = sumZZ = 0.0;
+	ndX = ndY = ndZ = 0.0;
+
 	for (int i = 0; i < numPlanes; i++)
 	{
-		Mat(planesRef[i].getNormal()->t()).copyTo(N.row(i));
+		Matx31d n = *(planesRef[i].getNormal());
+		sumXX += n(0)*n(0);
+		sumXY += n(0)*n(1);
+		sumXZ += n(0)*n(2);
+		sumYY += n(1)*n(1);
+		sumYZ += n(1)*n(2);
+		sumZZ += n(2)*n(2);
+
 		double dotNormals = planesRef[i].getNormal()->dot(*rotation * *(planes[i].getNormal()));
 		double d = planesRef[i].getDistance() - planes[i].getDistance()*dotNormals;
-		D.at<double>(i) = d;
+		ndX += n(0)*d;
+		ndY += n(1)*d;
+		ndZ += n(2)*d;
 	}
 
-	//Debug
-	//for (int i = 0; i < numPlanes; i++)
-	//{
-	//	double dotNormals = planesRef[i].getNormal()->dot(*(planes[i].getNormal()));
-	//	cout << "Dot Normals(" << i << "):" << dotNormals << endl;
-	//	cout << "Ref Dis: (" << i << "): " << planesRef[i].getDistance() << endl;
-	//	cout << "NoRef Dis: (" << i << "): " << planes[i].getDistance() << endl;
-	//	double d = planesRef[i].getDistance() - planes[i].getDistance()*dotNormals;
-	//	cout << "d (" << i << "): " << d << " D: " << D.at<double>(i) << endl;
+	Matx33d LeftMatrix (sumXX,sumXY,sumXZ,sumXY,sumYY,sumYZ,sumXZ,sumYZ,sumZZ);
+	Matx31d RightMatrix (ndX, ndY, ndZ); 
+	translation = LeftMatrix.inv()*RightMatrix;
 
-	//}
-
-	//cout << "N" << endl;
-	//for (int i = 0; i < N.rows; i++)
-	//{
-	//	double* ptr = N.ptr<double>(i);
-	//	for (int j = 0; j < N.cols; j++)
-	//	{
-	//		cout << ptr[j] << " ";
-	//	}
-	//	cout << endl;
-	//}
-
-	//Asume is not square and invertible
-	N_Pseudo = N.inv(DECOMP_SVD); 
-
-	//cout << "N_Pseudo" << endl;
-	//for (int i = 0; i < N_Pseudo.rows; i++)
-	//{
-	//	double* ptr = N_Pseudo.ptr<double>(i);
-	//	for (int j = 0; j < N_Pseudo.cols; j++)
-	//	{
-	//		cout << ptr[j] << " ";
-	//	}
-	//	cout << endl;
-	//}
-
-
-	Mat t = N_Pseudo*D;
-	translation = t;
 	//Check Translation accuracy
 	return checkTranslation(planes, planesRef, rotation, &translation, numPlanes);
-
-
 }
+
 Matx31f PlaneCalibrationV2::calculateTranslation(const list<Plane>& planes_Ref, const list<Plane>& planes_NoRef, const Matx33f rotation)
 {
 	Matx31f translation;
